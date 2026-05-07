@@ -6,39 +6,33 @@ import os
 app = Flask(__name__)
 CORS(app)
 
-# ================= DATABASE URL =================
+# ================= DATABASE =================
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-# ================= DB CONNECTION =================
 def get_db_connection():
     if not DATABASE_URL:
         raise Exception("DATABASE_URL is not set")
-
     return psycopg2.connect(DATABASE_URL)
 
 # ================= INIT DB =================
 def init_db():
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
+    conn = get_db_connection()
+    cur = conn.cursor()
 
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                id SERIAL PRIMARY KEY,
-                username TEXT NOT NULL,
-                email TEXT UNIQUE NOT NULL,
-                password TEXT NOT NULL
-            );
-        """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY,
+            username TEXT NOT NULL,
+            email TEXT UNIQUE NOT NULL,
+            password TEXT NOT NULL,
+            role TEXT NOT NULL
+        );
+    """)
 
-        conn.commit()
-        cur.close()
-        conn.close()
-
-        print("Database initialized")
-
-    except Exception as e:
-        print("DB Error:", e)
+    conn.commit()
+    cur.close()
+    conn.close()
+    print("Database ready")
 
 init_db()
 
@@ -52,13 +46,21 @@ def register():
         email = data["email"]
         password = data["password"]
 
+        # ROLE LOGIC
+        if email == "admin@bothouniversityclinic.ac.bw":
+            role = "ADMIN"
+        elif email.endswith("@bothouniversity.ac.bw"):
+            role = "LECTURER"
+        else:
+            role = "STUDENT"
+
         conn = get_db_connection()
         cur = conn.cursor()
 
-        cur.execute(
-            "INSERT INTO users (username, email, password) VALUES (%s, %s, %s)",
-            (username, email, password)
-        )
+        cur.execute("""
+            INSERT INTO users (username, email, password, role)
+            VALUES (%s, %s, %s, %s)
+        """, (username, email, password, role))
 
         conn.commit()
         cur.close()
@@ -78,17 +80,17 @@ def register():
 def login():
     try:
         data = request.get_json()
-
         email = data["email"]
         password = data["password"]
 
         conn = get_db_connection()
         cur = conn.cursor()
 
-        cur.execute(
-            "SELECT username, email FROM users WHERE email=%s AND password=%s",
-            (email, password)
-        )
+        cur.execute("""
+            SELECT id, username, email, role
+            FROM users
+            WHERE email=%s AND password=%s
+        """, (email, password))
 
         user = cur.fetchone()
 
@@ -97,9 +99,11 @@ def login():
 
         if user:
             return jsonify({
-                "message": "Login successful",
-                "username": user[0],
-                "email": user[1]
+                "id": user[0],
+                "username": user[1],
+                "email": user[2],
+                "role": user[3],
+                "message": "Login successful"
             })
 
         return jsonify({"message": "Invalid credentials"}), 401
@@ -108,6 +112,6 @@ def login():
         return jsonify({"message": "Server error", "error": str(e)}), 500
 
 
-# ================= RUN (RENDER FIX) =================
+# ================= RUN =================
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
